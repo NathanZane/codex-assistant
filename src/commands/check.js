@@ -9,7 +9,7 @@ import { codexPaths } from "../lib/paths.js";
 import { applySkillDisablePlan, planSkillDisable } from "../lib/skill-config.js";
 
 const ROLLOUT_GUIDANCE_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024;
-const SKILL_GUIDANCE_MIN_NEVER_USED = 3;
+const SKILL_GUIDANCE_MIN_NEVER_USED = 2;
 const SKILL_GUIDANCE_WASTE_THRESHOLD = 100_000;
 const ROLLOUT_INDENT = "  ";
 
@@ -189,7 +189,7 @@ async function buildSkillGuidance(report, codexHome, options = {}) {
     return null;
   }
 
-  const shouldSuggest = plan.actionCount > SKILL_GUIDANCE_MIN_NEVER_USED ||
+  const shouldSuggest = plan.actionCount >= SKILL_GUIDANCE_MIN_NEVER_USED ||
     plan.estimatedWasteTokens > SKILL_GUIDANCE_WASTE_THRESHOLD;
   if (!shouldSuggest) {
     return null;

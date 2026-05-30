@@ -3,6 +3,7 @@ import readline from "node:readline";
 import { attachSkillUsageEvidence, createSkillUsageEvidenceReader, scanSkillRegistry, summarizeSkillRegistry } from "../lib/skills.js";
 import { listSessionFiles, sortRecentSessions } from "../lib/session.js";
 import { formatInteger, measure, printIndentedLine, printSectionTitle, printTable } from "../lib/format.js";
+import { readSkillConfigState } from "../lib/skill-config.js";
 
 export async function runSkillCheck(codexHome, options = {}) {
   const days = options.allTime || options.days === "all" ? null : Number(options.days || 30);
@@ -25,8 +26,11 @@ export async function runSkillCheck(codexHome, options = {}) {
   scopedSessions = sortRecentSessions(scopedSessions, sessionLimit || scopedSessions.length || 1);
 
   const allSkills = await scanSkillRegistry(codexHome);
+  const skillConfig = await readSkillConfigState(codexHome);
   const activeRegistry = await readActiveSkillRegistry(allSessions, options.cache);
-  const skills = activeRegistry.entries.length ? resolveActiveSkills(allSkills, activeRegistry.entries) : dedupeSkills(allSkills);
+  const resolvedSkills = activeRegistry.entries.length ? resolveActiveSkills(allSkills, activeRegistry.entries) : dedupeSkills(allSkills);
+  const disabledSkills = resolvedSkills.filter((skill) => skillConfig.disabled.has(skill.fullName));
+  const skills = resolvedSkills.filter((skill) => !skillConfig.disabled.has(skill.fullName));
   await attachSkillUsageEvidence(skills, codexHome, {
     sessionFiles: scopedSessions,
     cache: options.cache,
@@ -70,6 +74,7 @@ export async function runSkillCheck(codexHome, options = {}) {
     },
     installedSkills: skills.length,
     skillFilesOnDisk: allSkills.length,
+    disabledSkills: disabledSkills.length,
     activeRegistrySource: activeRegistry.source,
     usedSkills: used.length,
     unusedSkills: unused.length,
@@ -97,9 +102,16 @@ export function printSkillCheck(report, options = {}) {
     printSectionTitle("Skill Check");
   }
   printIndentedLine(`Scanned ${formatInteger(report.scope.sessionsScanned)}${thread} sessions from ${scope}.`);
-  const diskNote = report.skillFilesOnDisk !== report.installedSkills ? ` (${report.skillFilesOnDisk} SKILL.md files on disk)` : "";
+  const notes = [];
+  if (report.skillFilesOnDisk !== report.installedSkills) {
+    notes.push(`${report.skillFilesOnDisk} SKILL.md files on disk`);
+  }
+  if (report.disabledSkills) {
+    notes.push(`${formatInteger(report.disabledSkills)} disabled in config`);
+  }
+  const contextNote = notes.length ? ` (${notes.join(", ")})` : "";
   printIndentedLine(
-    `${report.unusedSkills} of ${report.installedSkills} currently injected skills${diskNote} had no explicit usage evidence ` +
+    `${report.unusedSkills} of ${report.installedSkills} enabled injected skills${contextNote} had no explicit usage evidence ` +
       `(no SKILL.md tool-call read and no $skill mention).`,
   );
   printIndentedLine(
@@ -125,8 +137,10 @@ export function printSkillCheck(report, options = {}) {
       console.log("");
       printIndentedLine("To disable unused skills, run `codex-assistant cleanup skills`.");
     }
+  } else if (report.installedSkills) {
+    printIndentedLine("No enabled skills with cleanup candidates found in this scope.");
   } else {
-    printIndentedLine("No skills found in this scope.");
+    printIndentedLine("No enabled injected skills found in this scope.");
   }
 }
 
@@ -146,12 +160,16 @@ async function readActiveSkillRegistry(sessionFiles, cache) {
 
 async function collectSkillIngestionStats(sessionFiles, cache, skills, lookupSkills = skills) {
   const stats = new Map();
+  const includedSkills = new Set(skills.map((skill) => skill.fullName));
   const readUsageEvidence = createSkillUsageEvidenceReader(lookupSkills, cache);
   for (const file of sessionFiles) {
     const registry = await readSessionSkillRegistry(file.path, cache);
     const usageEvidence = await readUsageEvidence(file.path);
     const usedInSession = new Set(usageEvidence.map((evidence) => evidence.fullName));
     for (const entry of registry.entries) {
+      if (!includedSkills.has(entry.skill)) {
+        continue;
+      }
       const current = stats.get(entry.skill) || { ingestions: 0, tokens: 0, usedIngestions: 0, wasteTokens: 0 };
       current.ingestions += 1;
       current.tokens += entry.tokens || 0;

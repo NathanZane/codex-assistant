@@ -6,6 +6,7 @@ import test from "node:test";
 import { AnalysisCache } from "../src/lib/cache.js";
 import { applyCleanupPlan, planCleanup, planQuarantinedCleanup, planQuarantineRestore } from "../src/lib/cleanup.js";
 import { applySkillConfigRestorePlan, applySkillDisablePlan, planSkillConfigRestore, planSkillDisable } from "../src/lib/skill-config.js";
+import { runSkillCheck } from "../src/checks/skill-check.js";
 import { attachSkillUsageEvidence, scanSkillRegistry, summarizeSkillRegistry } from "../src/lib/skills.js";
 
 test("scanSkillRegistry builds plugin-aware skill names and usage evidence", async () => {
@@ -84,6 +85,48 @@ test("skill usage cache recomputes when a session JSONL grows", async () => {
   assert.equal(secondCache.stats.reusedGrowing, 0);
   assert.equal(secondCache.stats.misses, 1);
   assert.equal(skills[0].usage.explicitReads, 1);
+});
+
+test("runSkillCheck excludes skills disabled in config.toml", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-assistant-skills-disabled-config-"));
+  const codexHome = path.join(root, ".codex");
+  const enabledDir = path.join(codexHome, "skills", "enabled-skill");
+  const disabledDir = path.join(codexHome, "skills", "disabled-skill");
+  const sessionDir = path.join(codexHome, "sessions", "2026", "05", "26");
+  await fs.mkdir(enabledDir, { recursive: true });
+  await fs.mkdir(disabledDir, { recursive: true });
+  await fs.mkdir(sessionDir, { recursive: true });
+  const enabledPath = path.join(enabledDir, "SKILL.md");
+  const disabledPath = path.join(disabledDir, "SKILL.md");
+  await fs.writeFile(enabledPath, "---\nname: enabled-skill\ndescription: Enabled skill.\n---\n\n# Enabled\n");
+  await fs.writeFile(disabledPath, "---\nname: disabled-skill\ndescription: Disabled skill.\n---\n\n# Disabled\n");
+  await fs.writeFile(
+    path.join(codexHome, "config.toml"),
+    [
+      "[[skills.config]]",
+      'name = "disabled-skill"',
+      "enabled = false",
+      "",
+    ].join("\n"),
+  );
+
+  const registry = [
+    `- enabled-skill: Enabled skill. (file: ${enabledPath})`,
+    `- disabled-skill: Disabled skill. (file: ${disabledPath})`,
+  ].join("\n");
+  await fs.writeFile(
+    path.join(sessionDir, "rollout-2026-05-26T10-00-00-019d2bdc-1111-7000-9000-000000000002.jsonl"),
+    `${JSON.stringify({ type: "session_meta", payload: { base_instructions: { text: registry } } })}\n`,
+  );
+
+  const report = await runSkillCheck(codexHome);
+
+  assert.ok(report.skillFilesOnDisk >= 2);
+  assert.equal(report.installedSkills, 1);
+  assert.equal(report.disabledSkills, 1);
+  assert.equal(report.unusedSkills, 1);
+  assert.deepEqual(report.neverUsedCandidates.map((candidate) => candidate.skill), ["enabled-skill"]);
+  assert.equal(report.neverUsedCandidates.some((candidate) => candidate.skill === "disabled-skill"), false);
 });
 
 test("planCleanup only plans quarantine actions", async () => {
