@@ -40,6 +40,34 @@ test("bare cleanup accepts global json and cache options", async () => {
   assert.deepEqual(parsed.targets.map((target) => target.name), ["rollouts", "skills"]);
 });
 
+test("uninstall json previews actions without changing state", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-assistant-cli-uninstall-json-"));
+  const codexHome = path.join(root, ".codex");
+  await fs.mkdir(codexHome, { recursive: true });
+
+  const output = await withCapturedConsole(() => runCli(["uninstall", "--json", "--codex-home", codexHome]));
+  const parsed = JSON.parse(output);
+  assert.equal(parsed.mode, "uninstall");
+  assert.equal(parsed.codexHome, codexHome);
+  assert.deepEqual(parsed.packageUninstall.command, ["npm", "uninstall", "-g", "@nathanzane/codex-assistant"]);
+});
+
+test("uninstall help prints command-specific options", async () => {
+  const output = await withCapturedConsole(() => runCli(["uninstall", "--help"]));
+  assert.match(output, /codex-assistant uninstall/);
+  assert.match(output, /--rollouts restore\|trash\|leave/);
+});
+
+test("uninstall rejects unknown rollout choices", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-assistant-cli-uninstall-option-"));
+  const codexHome = path.join(root, ".codex");
+
+  await assert.rejects(
+    () => runCli(["uninstall", "--rollouts", "archive", "--codex-home", codexHome]),
+    /unknown uninstall --rollouts value "archive"/,
+  );
+});
+
 test("check rejects unknown --only values", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-assistant-cli-check-"));
   const codexHome = path.join(root, ".codex");

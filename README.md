@@ -51,6 +51,7 @@ codex-assistant project <path>
 codex-assistant cleanup
 codex-assistant cleanup skills
 codex-assistant cleanup rollouts
+codex-assistant uninstall
 ```
 
 Every command accepts `--codex-home <path>` and `--json`.
@@ -78,6 +79,8 @@ codex-assistant cleanup rollouts --sub-agents --apply
 codex-assistant cleanup rollouts --quarantined --apply
 codex-assistant cleanup rollouts --restore --apply
 codex-assistant cleanup rollouts --manual
+codex-assistant uninstall --apply
+codex-assistant uninstall --rollouts restore --delete-cache --delete-backups --apply
 ```
 
 ## What It Scans
@@ -120,6 +123,12 @@ codex-assistant cleanup rollouts --manual
   as skill usage evidence and AGENTS reads are recomputed for growing files so
   recent activity is not missed. Use `--refresh-cache` to force recompute or
   `--no-cache` to disable the cache.
+- `uninstall` previews a final cleanup. If quarantined rollouts exist, it asks
+  whether to restore, trash, or leave them. It can delete
+  `~/.codex/cache/codex-assistant` and `~/.codex/backups/codex-assistant`, then
+  runs `npm uninstall -g @nathanzane/codex-assistant`. Shared npm cache and npm
+  log folders are not deleted. It does not change current skill config; restore
+  skill config before uninstalling if you want to undo a previous skill cleanup.
 
 Token estimates use `ceil(chars / 4)`. Exact token usage is reported when Codex
 session `token_count` events include it.
@@ -131,6 +140,8 @@ session `token_count` events include it.
   offer cleanup, but files or config change only after explicit confirmation.
 - Cleanup commands are conservative by default. Interactive cleanup asks for
   confirmation; non-interactive cleanup requires `--apply`.
+- `uninstall` follows the same safety model: it previews the restore/delete/npm
+  actions first and requires confirmation or `--apply`.
 - Rollout quarantine moves files to `~/.codex/quarantine/rollouts/` first.
   Trashing quarantined files is a separate cleanup choice.
 - Skill cleanup edits only simple `[[skills.config]]` tables with string `name`

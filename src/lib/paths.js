@@ -32,7 +32,9 @@ export function codexPaths(codexHome) {
     hooks: path.join(codexHome, "hooks.json"),
     skills: path.join(codexHome, "skills"),
     pluginCache: path.join(codexHome, "plugins", "cache"),
+    assistantCacheDir: path.join(codexHome, "cache", "codex-assistant"),
     assistantCache: path.join(codexHome, "cache", "codex-assistant", "cache-v1.json"),
+    assistantBackups: path.join(codexHome, "backups", "codex-assistant"),
     quarantine: path.join(codexHome, "quarantine"),
     rolloutQuarantine: path.join(codexHome, "quarantine", "rollouts"),
   };
