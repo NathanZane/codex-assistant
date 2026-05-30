@@ -3,6 +3,7 @@ import { runCheck } from "./commands/check.js";
 import { runCleanup } from "./commands/cleanup.js";
 import { runProject } from "./commands/project.js";
 import { runStartup } from "./commands/startup.js";
+import { runUninstall } from "./commands/uninstall.js";
 import { parseArgs } from "./lib/args.js";
 import { defaultCodexHome, normalizeInputPath } from "./lib/paths.js";
 
@@ -12,6 +13,7 @@ const COMMANDS = new Map([
   ["cleanup", runCleanup],
   ["project", runProject],
   ["startup", runStartup],
+  ["uninstall", runUninstall],
 ]);
 
 const CHECK_ALIASES = new Set(["agents", "rollouts", "skills"]);
@@ -40,6 +42,7 @@ const OPTION_SETS = {
   ]),
   project: new Set([...GLOBAL_OPTIONS, "limit", "project"]),
   startup: new Set([...GLOBAL_OPTIONS, "limit", "project"]),
+  uninstall: new Set([...GLOBAL_OPTIONS, "apply", "deleteBackups", "deleteCache", "keepBackups", "keepCache", "rollouts"]),
 };
 
 export async function runCli(argv) {
@@ -102,6 +105,7 @@ Usage:
   codex-assistant cleanup [rollouts|skills]
   codex-assistant cleanup rollouts [--archived|--sub-agents|--active-older|--manual|--quarantined|--restore] [--apply]
   codex-assistant cleanup skills [--never-used|--rarely-used|--manual|--restore] [--apply]
+  codex-assistant uninstall [--rollouts restore|trash|leave] [--delete-cache|--keep-cache] [--delete-backups|--keep-backups] [--apply]
 
 Global options:
   --codex-home <path>  Override Codex home. Defaults to ~/.codex.
@@ -113,6 +117,9 @@ Global options:
   --refresh-cache      Recompute cached per-file analyses.
   --apply              Apply the selected cleanup action. Without this, cleanup previews only.
   --no-open            With cleanup rollouts --manual, print folders without opening Explorer/Finder.
+  --rollouts <mode>    With uninstall, choose restore, trash, or leave for quarantined rollouts.
+  --delete-cache       With uninstall, delete the codex-assistant analysis cache.
+  --delete-backups     With uninstall, delete codex-assistant config backups.
 
 Notes:
   Running codex-assistant with no subcommand is the same as codex-assistant check.
