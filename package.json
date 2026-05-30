@@ -1,0 +1,39 @@
+{
+  "name": "@nathanzane/codex-assistant",
+  "version": "0.1.0-beta.0",
+  "description": "Local-first Codex hygiene and audit CLI for token bloat, stale sessions, skills, and startup context.",
+  "type": "module",
+  "bin": {
+    "codex-assistant": "./bin/codex-assistant.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "start": "node ./bin/codex-assistant.js",
+    "test": "node --test",
+    "smoke": "node ./bin/codex-assistant.js check --sessions-limit 3 --min-size-mb 100"
+  },
+  "keywords": [
+    "codex",
+    "cli",
+    "audit",
+    "assistant",
+    "tokens"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nathanzane/codex-assistant.git"
+  },
+  "bugs": {
+    "url": "https://github.com/nathanzane/codex-assistant/issues"
+  },
+  "homepage": "https://github.com/nathanzane/codex-assistant#readme",
+  "engines": {
+    "node": ">=20"
+  }
+}

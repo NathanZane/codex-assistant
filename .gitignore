@@ -1,0 +1,14 @@
+node_modules/
+npm-debug.log*
+*.tgz
+
+.DS_Store
+Thumbs.db
+
+coverage/
+.nyc_output/
+
+.env
+.env.*
+
+.codex-assistant-cache/
