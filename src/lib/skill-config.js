@@ -6,7 +6,7 @@ import { codexPaths } from "./paths.js";
 import { statSafe, walkFiles } from "./fs.js";
 
 export async function planSkillDisable(codexHome, candidates, options = {}) {
-  const existing = await readSkillConfig(codexHome);
+  const existing = await readSkillConfigState(codexHome);
   const skills = candidates
     .filter((candidate) => candidate && candidate.skill)
     .filter((candidate) => !existing.disabled.has(candidate.skill))
@@ -110,7 +110,7 @@ export function openConfigFile(codexHome) {
   return configPath;
 }
 
-async function readSkillConfig(codexHome) {
+export async function readSkillConfigState(codexHome) {
   const configPath = codexPaths(codexHome).config;
   let text = "";
   try {
