@@ -263,13 +263,24 @@ test("applyCleanupPlan quarantines files using mirrored Codex folder structure",
   await fs.utimes(sessionPath, oldDate, oldDate);
 
   const plan = await planCleanup(codexHome, { kind: "archived", minSizeMb: 1 });
-  const result = await applyCleanupPlan(plan);
+  const progressUpdates = [];
+  const result = await applyCleanupPlan(plan, {
+    progress: {
+      updateStep(rowId, stepId, current, total, options = {}) {
+        progressUpdates.push({ rowId, stepId, current, total, ...options });
+      },
+    },
+  });
   const target = path.join(codexHome, "quarantine", "rollouts", "archived_sessions", path.basename(sessionPath));
 
   assert.equal(result.actionCount, 1);
   assert.equal(result.quarantineRoot, path.join(codexHome, "quarantine", "rollouts"));
   assert.equal(await exists(sessionPath), false);
   assert.equal(await exists(target), true);
+  assert.deepEqual(progressUpdates, [
+    { rowId: "rollout-apply", stepId: "quarantine", current: 0, total: 1, rowLabel: "Rollouts", stepLabel: "quarantine" },
+    { rowId: "rollout-apply", stepId: "quarantine", current: 1, total: 1, rowLabel: "Rollouts", stepLabel: "quarantine" },
+  ]);
 });
 
 test("applyCleanupPlan restores quarantined files to mirrored Codex folders", async () => {

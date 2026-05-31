@@ -135,14 +135,14 @@ export async function planQuarantineRestore(codexHome) {
   };
 }
 
-export async function applyCleanupPlan(plan) {
+export async function applyCleanupPlan(plan, options = {}) {
   if (plan.mode === "trash") {
-    return trashQuarantinedFiles(plan);
+    return trashQuarantinedFiles(plan, options);
   }
   if (plan.mode === "restore") {
-    return restoreQuarantinedFiles(plan);
+    return restoreQuarantinedFiles(plan, options);
   }
-  return quarantineFiles(plan);
+  return quarantineFiles(plan, options);
 }
 
 function matchesCleanupKind({ file, kind, eligibleArchived, eligibleSubThread, eligibleByStaleAge }) {
@@ -171,17 +171,19 @@ function cleanupReason(file, { staleDays, archivedStaleDays }) {
   return `active session older than ${staleDays} days`;
 }
 
-async function quarantineFiles(plan) {
+async function quarantineFiles(plan, options) {
   const paths = codexPaths(plan.codexHome);
   let bytesMoved = 0;
   const moved = [];
 
+  updateApplyProgress(plan, options, 0);
   for (const action of plan.actions) {
     assertInside(paths.codexHome, action.source, "cleanup source");
     assertInside(paths.rolloutQuarantine, action.target, "quarantine target");
     await moveFile(action.source, action.target);
     bytesMoved += action.sizeBytes;
     moved.push(action);
+    updateApplyProgress(plan, options, moved.length);
   }
 
   return {
@@ -193,16 +195,18 @@ async function quarantineFiles(plan) {
   };
 }
 
-async function trashQuarantinedFiles(plan) {
+async function trashQuarantinedFiles(plan, options) {
   const paths = codexPaths(plan.codexHome);
   let bytesMoved = 0;
   const trashed = [];
 
+  updateApplyProgress(plan, options, 0);
   for (const action of plan.actions) {
     assertInside(paths.rolloutQuarantine, action.source, "trash source");
     await sendFileToTrash(action.source);
     bytesMoved += action.sizeBytes;
     trashed.push(action);
+    updateApplyProgress(plan, options, trashed.length);
   }
 
   return {
@@ -214,7 +218,7 @@ async function trashQuarantinedFiles(plan) {
   };
 }
 
-async function restoreQuarantinedFiles(plan) {
+async function restoreQuarantinedFiles(plan, options) {
   const paths = codexPaths(plan.codexHome);
   for (const action of plan.actions) {
     assertInside(paths.rolloutQuarantine, action.source, "restore source");
@@ -229,10 +233,12 @@ async function restoreQuarantinedFiles(plan) {
 
   let bytesMoved = 0;
   const restored = [];
+  updateApplyProgress(plan, options, 0);
   for (const action of plan.actions) {
     await moveFile(action.source, action.target);
     bytesMoved += action.sizeBytes;
     restored.push(action);
+    updateApplyProgress(plan, options, restored.length);
   }
 
   return {
@@ -242,6 +248,14 @@ async function restoreQuarantinedFiles(plan) {
     quarantineRoot: paths.rolloutQuarantine,
     actions: restored,
   };
+}
+
+function updateApplyProgress(plan, options, current) {
+  const stepLabel = plan.mode === "trash" ? "trash" : plan.mode === "restore" ? "restore" : "quarantine";
+  options.progress?.updateStep("rollout-apply", stepLabel, current, plan.actions.length, {
+    rowLabel: "Rollouts",
+    stepLabel,
+  });
 }
 
 async function moveFile(source, target) {

@@ -5,6 +5,7 @@ export function createProgressReporter(options = {}) {
   const enabled = options.enabled ?? (Boolean(stream?.isTTY) && !options.json);
   const minIntervalMs = Number(options.minIntervalMs ?? 100);
   const color = options.style === false ? false : supportsColor(stream);
+  const title = options.title || "Scanning";
   const rows = new Map();
   let started = false;
   let activeRowId = null;
@@ -15,7 +16,7 @@ export function createProgressReporter(options = {}) {
     if (!enabled || started) {
       return;
     }
-    stream.write(`${colorText("Scanning", ["bold", "cyan"], color)}\n`);
+    stream.write(`${colorText(title, ["bold", "cyan"], color)}\n`);
     started = true;
   }
 
