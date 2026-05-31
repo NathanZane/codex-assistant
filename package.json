@@ -1,6 +1,6 @@
 {
   "name": "@nathanzane/codex-assistant",
-  "version": "0.1.0-beta.1",
+  "version": "0.1.0-beta.2",
   "description": "Local-first Codex hygiene and audit CLI for token bloat, stale sessions, skills, and startup context.",
   "type": "module",
   "bin": {
