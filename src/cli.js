@@ -20,7 +20,7 @@ const CHECK_ALIASES = new Set(["agents", "rollouts", "skills"]);
 const GLOBAL_OPTIONS = new Set(["codexHome", "help", "json"]);
 const CACHE_OPTIONS = new Set(["cacheAutoSaveEvery", "cachePath", "noCache", "refreshCache"]);
 const SKILL_SCAN_OPTIONS = new Set(["allTime", "candidates", "days", "limit", "sessionLimit", "sessionsLimit", "thread"]);
-const ROLLOUT_SCAN_OPTIONS = new Set(["limit", "minSizeMb", "staleDays", "subAgentStaleDays"]);
+const ROLLOUT_SCAN_OPTIONS = new Set(["archivedStaleDays", "limit", "minSizeMb", "staleDays", "subAgentStaleDays"]);
 const OPTION_SETS = {
   check: new Set([...GLOBAL_OPTIONS, ...CACHE_OPTIONS, ...SKILL_SCAN_OPTIONS, ...ROLLOUT_SCAN_OPTIONS, "only"]),
   cleanup: new Set([
@@ -113,6 +113,12 @@ Global options:
   --days <n>           Skill usage lookback window. Defaults to 30.
   --all-time           Scan all known sessions for skill usage evidence.
   --thread <text>      Restrict skill evidence to matching thread id/name text.
+  --archived-stale-days <n>
+                       Archived rollout age threshold. Defaults to 3.
+  --stale-days <n>     Active rollout age threshold. Defaults to 30.
+  --sub-agent-stale-days <n>
+                       Sub-agent rollout age threshold. Defaults to 7.
+  --min-size-mb <n>    Optional rollout size threshold. Defaults to 0.
   --no-cache           Disable the local analysis cache.
   --refresh-cache      Recompute cached per-file analyses.
   --apply              Apply the selected cleanup action. Without this, cleanup previews only.

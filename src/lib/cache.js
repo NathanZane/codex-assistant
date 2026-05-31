@@ -14,6 +14,8 @@ export class AnalysisCache {
     this.autoSaveEvery = Number(options.cacheAutoSaveEvery || 100);
     this.lastSavedWrites = 0;
     this.data = { version: CACHE_VERSION, entries: {} };
+    this.loaded = false;
+    this.entryCount = 0;
     this.stats = { hits: 0, reusedGrowing: 0, misses: 0, writes: 0, disabled: !this.enabled, loadError: null, saveError: null };
   }
 
@@ -26,6 +28,8 @@ export class AnalysisCache {
       const parsed = JSON.parse(text);
       if (parsed?.version === CACHE_VERSION && parsed.entries && typeof parsed.entries === "object") {
         this.data = parsed;
+        this.loaded = true;
+        this.entryCount = Object.keys(parsed.entries).length;
       }
     } catch (error) {
       if (error?.code !== "ENOENT") {

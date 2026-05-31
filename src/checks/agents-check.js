@@ -7,13 +7,25 @@ import { formatInteger, measure, printIndentedLine, printSectionTitle, printTabl
 
 export async function runAgentsCheck(codexHome, options = {}) {
   const limit = Number(options.limit || 12);
-  const sessionFiles = await listSessionFiles(codexHome, { includeArchived: false, includeMeta: true, cache: options.cache });
+  const sessionFiles = await listSessionFiles(codexHome, {
+    includeArchived: false,
+    includeMeta: true,
+    cache: options.cache,
+    progress: options.progress,
+    progressRow: "agents",
+    progressRowLabel: "AGENTS",
+    scanProgressStep: "metadata",
+    scanProgressStepLabel: "metadata",
+  });
   const activeThreads = sessionFiles.filter((file) => file.referenced && !file.isSubagent && file.cwd);
   const projects = groupActiveProjects(activeThreads);
   const projectReports = [];
   const filesByPath = new Map();
+  const projectList = [...projects.values()];
 
-  for (const project of projects.values()) {
+  for (let index = 0; index < projectList.length; index += 1) {
+    const project = projectList[index];
+    updateAgentsProgress(options, "projects", index + 1, projectList.length);
     const instructions = await scanProjectInstructions(project.projectPath);
     const history = instructions.files.length
       ? await collectHistoricalAgentsStats(project.sessions, options)
@@ -39,6 +51,8 @@ export async function runAgentsCheck(codexHome, options = {}) {
       files: instructions.files,
     });
   }
+  updateAgentsProgress(options, "projects", projectList.length, projectList.length);
+  options.progress?.finishRow("agents");
 
   const projectsWithCurrentAgents = projectReports.filter((project) => project.currentTokens > 0);
   const rows = projectsWithCurrentAgents
@@ -102,6 +116,13 @@ export function printAgentsCheck(report, options = {}) {
   }
 }
 
+function updateAgentsProgress(options, stepId, current, total) {
+  options.progress?.updateStep("agents", stepId, current, total, {
+    rowLabel: "AGENTS",
+    stepLabel: stepId,
+  });
+}
+
 function groupActiveProjects(sessionFiles) {
   const projects = new Map();
   for (const file of sessionFiles) {
@@ -150,7 +171,8 @@ function buildRecommendations(projects) {
 
 async function collectHistoricalAgentsStats(sessionFiles, options) {
   const reads = [];
-  for (const file of sessionFiles) {
+  for (let index = 0; index < sessionFiles.length; index += 1) {
+    const file = sessionFiles[index];
     const fileReads = await readHistoricalAgentsReads(file.path, options.cache);
     for (const read of fileReads) {
       if (read?.tokens) {

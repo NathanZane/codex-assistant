@@ -5,7 +5,8 @@ session logs. The current MVP is intentionally small and modular:
 
 - **Skill Check:** finds skills with no explicit usage evidence in a time window
   and estimates startup tokens saved if they were disabled or moved local.
-- **JSONL Size Check:** finds large old/archived rollout logs that can be trashed.
+- **JSONL Size Check:** finds stale active, sub-agent, and archived rollout logs
+  that can be trashed.
 - **AGENTS Check:** finds current and historically read `AGENTS.md` token
   footprints across active top-level projects and highlights the largest review
   candidates.
@@ -33,7 +34,7 @@ npx @nathanzane/codex-assistant@beta
 The simplest way to check for bloat is to run `codex-assistant`.
 It runs the checks one at a time: rollout size first, then unused skills, then
 large `AGENTS.md` footprints. When it finds something actionable, such as
-archived rollouts, it offers the relevant cleanup step in the terminal.
+stale or archived rollouts, it offers the relevant cleanup step in the terminal.
 
 You can also run individual checks and cleanups directly:
 
@@ -57,7 +58,7 @@ codex-assistant uninstall
 Every command accepts `--codex-home <path>` and `--json`.
 Running `codex-assistant` with no subcommand is the same as `codex-assistant check`.
 In an interactive terminal, the generic check offers prioritized cleanup guidance
-for large old rollouts and never-used skills.
+for stale rollouts and never-used skills.
 
 Advanced options are:
 
@@ -67,6 +68,8 @@ codex-assistant check --only agents
 codex-assistant check --only skills
 codex-assistant check --only jsonl
 codex-assistant check agents --limit 10
+codex-assistant check rollouts --archived-stale-days 3
+codex-assistant check rollouts --min-size-mb 100
 codex-assistant check skills --days 30 --sessions-limit 100
 codex-assistant check skills --all-time
 codex-assistant cleanup skills
@@ -105,6 +108,10 @@ codex-assistant uninstall --rollouts restore --delete-cache --delete-backups --a
   selected rollout files into `~/.codex/quarantine/rollouts/` using the same
   folder structure as Codex, such as `quarantine/rollouts/sessions/...` and
   `quarantine/rollouts/archived_sessions/...`.
+- By default, rollout cleanup targets archived rollouts older than 3 days,
+  sub-agent rollouts older than 7 days, and active top-level rollouts older
+  than 30 days. There is no default size threshold; use `--min-size-mb` if you
+  want one.
 - Running `cleanup rollouts` again shows quarantined files as a trash option
   when present; applying that option sends them to system trash where the OS
   supports it.

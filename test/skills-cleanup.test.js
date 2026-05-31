@@ -135,11 +135,11 @@ test("planCleanup only plans quarantine actions", async () => {
   const sessionDir = path.join(codexHome, "sessions", "2026", "01", "01");
   await fs.mkdir(sessionDir, { recursive: true });
   const sessionPath = path.join(sessionDir, "rollout-2026-01-01T00-00-00-019d2bdc-2222-7000-9000-000000000001.jsonl");
-  await fs.writeFile(sessionPath, `${"x".repeat(2 * 1024 * 1024)}\n`);
+  await fs.writeFile(sessionPath, "small stale rollout\n");
   const oldDate = new Date(Date.now() - 60 * 86_400_000);
   await fs.utimes(sessionPath, oldDate, oldDate);
 
-  const plan = await planCleanup(codexHome, { staleDays: 30, minSizeMb: 1 });
+  const plan = await planCleanup(codexHome, { staleDays: 30 });
   assert.equal(plan.mode, "quarantine");
   assert.equal(plan.actionCount, 1);
   assert.equal(plan.actions[0].action, "quarantine");
@@ -184,9 +184,9 @@ test("planCleanup treats stale sub-thread rollouts as cleanup candidates", async
   const oldDate = new Date(Date.now() - 60 * 86_400_000);
   await fs.utimes(sessionPath, oldDate, oldDate);
 
-  const plan = await planCleanup(codexHome, { staleDays: 30, minSizeMb: 1, kind: "sub-agents" });
+  const plan = await planCleanup(codexHome, { staleDays: 30, kind: "sub-agents" });
   assert.equal(plan.actionCount, 1);
-  assert.equal(plan.actions[0].reason, "large sub-thread session log");
+  assert.equal(plan.actions[0].reason, "stale sub-thread session log");
   assert.equal(plan.actions[0].isSubagent, true);
   assert.equal(plan.actions[0].parentThreadId, parentThreadId);
 });
@@ -200,29 +200,33 @@ test("recommended rollout cleanup uses archived, sub-agent, and active age rules
   await fs.mkdir(archiveDir, { recursive: true });
 
   const archived = path.join(archiveDir, "rollout-2026-01-01T00-00-00-019d2bdc-8000-7000-9000-000000000001.jsonl");
+  const youngArchived = path.join(archiveDir, "rollout-2026-01-01T00-00-00-019d2bdc-8005-7000-9000-000000000001.jsonl");
   const oldSubagent = path.join(sessionDir, "rollout-2026-01-01T00-00-00-019d2bdc-8001-7000-9000-000000000001.jsonl");
   const youngSubagent = path.join(sessionDir, "rollout-2026-01-01T00-00-00-019d2bdc-8002-7000-9000-000000000001.jsonl");
   const oldActive = path.join(sessionDir, "rollout-2026-01-01T00-00-00-019d2bdc-8003-7000-9000-000000000001.jsonl");
   const youngActive = path.join(sessionDir, "rollout-2026-01-01T00-00-00-019d2bdc-8004-7000-9000-000000000001.jsonl");
 
   await fs.writeFile(archived, `${"x".repeat(2 * 1024 * 1024)}\n`);
+  await fs.writeFile(youngArchived, `${"x".repeat(2 * 1024 * 1024)}\n`);
   await fs.writeFile(oldSubagent, `${JSON.stringify(subagentMeta("019d2bdc-8001-7000-9000-000000000001"))}\n${"x".repeat(2 * 1024 * 1024)}\n`);
   await fs.writeFile(youngSubagent, `${JSON.stringify(subagentMeta("019d2bdc-8002-7000-9000-000000000001"))}\n${"x".repeat(2 * 1024 * 1024)}\n`);
   await fs.writeFile(oldActive, `${"x".repeat(2 * 1024 * 1024)}\n`);
   await fs.writeFile(youngActive, `${"x".repeat(2 * 1024 * 1024)}\n`);
 
   const now = Date.now();
-  await fs.utimes(archived, new Date(now - 1 * 86_400_000), new Date(now - 1 * 86_400_000));
+  await fs.utimes(archived, new Date(now - 4 * 86_400_000), new Date(now - 4 * 86_400_000));
+  await fs.utimes(youngArchived, new Date(now - 1 * 86_400_000), new Date(now - 1 * 86_400_000));
   await fs.utimes(oldSubagent, new Date(now - 8 * 86_400_000), new Date(now - 8 * 86_400_000));
   await fs.utimes(youngSubagent, new Date(now - 6 * 86_400_000), new Date(now - 6 * 86_400_000));
   await fs.utimes(oldActive, new Date(now - 31 * 86_400_000), new Date(now - 31 * 86_400_000));
   await fs.utimes(youngActive, new Date(now - 29 * 86_400_000), new Date(now - 29 * 86_400_000));
 
-  const plan = await planCleanup(codexHome, { staleDays: 30, subAgentStaleDays: 7, minSizeMb: 1 });
+  const plan = await planCleanup(codexHome, { staleDays: 30, subAgentStaleDays: 7, archivedStaleDays: 3, minSizeMb: 1 });
   const sources = new Set(plan.actions.map((action) => action.source));
 
   assert.equal(plan.actionCount, 3);
   assert.equal(sources.has(archived), true);
+  assert.equal(sources.has(youngArchived), false);
   assert.equal(sources.has(oldSubagent), true);
   assert.equal(sources.has(oldActive), true);
   assert.equal(sources.has(youngSubagent), false);
@@ -255,6 +259,8 @@ test("applyCleanupPlan quarantines files using mirrored Codex folder structure",
   const sessionId = "019d2bdc-5555-7000-9000-000000000001";
   const sessionPath = path.join(archiveDir, `rollout-2026-01-01T00-00-00-${sessionId}.jsonl`);
   await fs.writeFile(sessionPath, `${"x".repeat(2 * 1024 * 1024)}\n`);
+  const oldDate = new Date(Date.now() - 4 * 86_400_000);
+  await fs.utimes(sessionPath, oldDate, oldDate);
 
   const plan = await planCleanup(codexHome, { kind: "archived", minSizeMb: 1 });
   const result = await applyCleanupPlan(plan);

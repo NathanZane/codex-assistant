@@ -43,7 +43,7 @@ export async function runCleanup(parsed) {
       printJson({
         command: "cleanup",
         targets: [
-          { name: "rollouts", description: "Quarantine, trash, restore, or manually inspect large rollout JSONL files." },
+          { name: "rollouts", description: "Quarantine, trash, restore, or manually inspect stale rollout JSONL files." },
           { name: "skills", description: "Disable unused/rarely used skills in config.toml, with a backup first." },
         ],
       });
@@ -67,21 +67,22 @@ export async function runCleanup(parsed) {
 }
 
 export async function runRolloutCleanup({ options }) {
-  const staleDays = Number(options.staleDays || 30);
-  const subAgentStaleDays = Number(options.subAgentStaleDays || 7);
-  const minSizeMb = Number(options.minSizeMb || 100);
+  const staleDays = Number(options.staleDays ?? 30);
+  const subAgentStaleDays = Number(options.subAgentStaleDays ?? 7);
+  const archivedStaleDays = Number(options.archivedStaleDays ?? 3);
+  const minSizeMb = Number(options.minSizeMb ?? 0);
   const interactive = Boolean(process.stdin.isTTY);
   const sessionFiles = await listSessionFiles(options.codexHome, { includeArchived: true, includeMeta: true });
   const plans = {
-    archived: await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, minSizeMb, kind: "archived", sessionFiles }),
-    "sub-agents": await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, minSizeMb, kind: "sub-agents", sessionFiles }),
-    "active-older": await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, minSizeMb, kind: "active-older", sessionFiles }),
-    recommended: await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, minSizeMb, kind: "recommended", sessionFiles }),
+    archived: await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, archivedStaleDays, minSizeMb, kind: "archived", sessionFiles }),
+    "sub-agents": await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, archivedStaleDays, minSizeMb, kind: "sub-agents", sessionFiles }),
+    "active-older": await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, archivedStaleDays, minSizeMb, kind: "active-older", sessionFiles }),
+    recommended: await planCleanup(options.codexHome, { staleDays, subAgentStaleDays, archivedStaleDays, minSizeMb, kind: "recommended", sessionFiles }),
     quarantined: await planQuarantinedCleanup(options.codexHome),
     restore: await planQuarantineRestore(options.codexHome),
     manual: planManualPaths(options.codexHome, sessionFiles, { staleDays, minSizeMb }),
   };
-  const selection = resolveSelection(options) || (interactive ? await promptCleanupSelection(plans, { staleDays, subAgentStaleDays }) : "recommended");
+  const selection = resolveSelection(options) || (interactive ? await promptCleanupSelection(plans, { staleDays, subAgentStaleDays, archivedStaleDays }) : "recommended");
   if (!selection) {
     return;
   }
@@ -208,7 +209,7 @@ Usage:
   codex-assistant cleanup skills [--never-used|--rarely-used|--manual|--restore] [--apply]
 
 Targets:
-  rollouts   Quarantine, trash, restore, or manually inspect large rollout JSONL files.
+  rollouts   Quarantine, trash, restore, or manually inspect stale rollout JSONL files.
   skills     Disable unused/rarely used skills in config.toml, with a backup first.`);
 }
 
@@ -234,10 +235,10 @@ function resolveSelection(options) {
   return null;
 }
 
-async function promptCleanupSelection(plans, { staleDays, subAgentStaleDays }) {
+async function promptCleanupSelection(plans, { staleDays, subAgentStaleDays, archivedStaleDays }) {
   const choices = [];
   if (plans.archived.actionCount) {
-    choices.push(["archived", `Archived rollouts (${plans.archived.actionCount}, ${formatBytes(plans.archived.bytesPlanned)})`]);
+    choices.push(["archived", `Archived rollouts older than ${archivedStaleDays}d (${plans.archived.actionCount}, ${formatBytes(plans.archived.bytesPlanned)})`]);
   }
   if (plans["sub-agents"].actionCount) {
     choices.push(["sub-agents", `Sub-agent rollouts older than ${subAgentStaleDays}d (${plans["sub-agents"].actionCount}, ${formatBytes(plans["sub-agents"].bytesPlanned)})`]);
@@ -384,7 +385,7 @@ function openManualFolders(folders) {
 }
 
 function planManualPaths(codexHome, sessionFiles, options) {
-  const minSizeBytes = Number(options.minSizeMb || 100) * 1024 * 1024;
+  const minSizeBytes = Number(options.minSizeMb ?? 0) * 1024 * 1024;
   const paths = codexPaths(codexHome);
   const matched = sessionFiles.filter((file) => file.sizeBytes >= minSizeBytes);
   const byRoot = new Map([

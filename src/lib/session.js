@@ -29,21 +29,26 @@ export async function readSessionIndex(codexHome) {
 
 export async function listSessionFiles(codexHome, options = {}) {
   const paths = codexPaths(codexHome);
-  const index = await readSessionIndex(codexHome);
+  const sessionIndex = await readSessionIndex(codexHome);
   const roots = [paths.sessions];
   if (options.includeArchived !== false) {
     roots.push(paths.archivedSessions);
   }
 
   const files = [];
+  const filePaths = [];
   for (const root of roots) {
     for await (const filePath of walkFiles(root, { match: (_fullPath, name) => name.endsWith(".jsonl") })) {
-      const stat = await statSafe(filePath);
-      if (!stat) {
-        continue;
-      }
+      filePaths.push(filePath);
+    }
+  }
+
+  for (let fileIndex = 0; fileIndex < filePaths.length; fileIndex += 1) {
+    const filePath = filePaths[fileIndex];
+    const stat = await statSafe(filePath);
+    if (stat) {
       const sessionId = extractSessionId(filePath);
-      const indexEntry = sessionId ? index.get(sessionId) : null;
+      const indexEntry = sessionId ? sessionIndex.get(sessionId) : null;
       const meta = options.includeMeta ? await readSessionMetaCached(filePath, options.cache) : {};
       const lastActiveAt = indexEntry?.updatedAt || stat.mtime;
       files.push({
@@ -67,9 +72,23 @@ export async function listSessionFiles(codexHome, options = {}) {
         agentRole: meta.agentRole || null,
       });
     }
+    updateScanProgress(options, fileIndex + 1, filePaths.length);
+  }
+  if (!filePaths.length) {
+    updateScanProgress(options, 0, 0);
   }
 
   return files;
+}
+
+function updateScanProgress(options, current, total) {
+  if (!options.progressRow || !options.scanProgressStep) {
+    return;
+  }
+  options.progress?.updateStep(options.progressRow, options.scanProgressStep, current, total, {
+    rowLabel: options.progressRowLabel,
+    stepLabel: options.scanProgressStepLabel,
+  });
 }
 
 export function sortRecentSessions(files, limit = 25) {
