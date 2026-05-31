@@ -82,11 +82,15 @@ export async function attachSkillUsageEvidence(skills, codexHome, options = {}) 
   const sessionFiles = options.sessionFiles
     ? options.sessionFiles
     : sortRecentSessions(await listSessionFiles(codexHome, { includeArchived: false }), options.sessionsLimit || 50);
+  const usageBySession = options.usageBySession ||
+    await collectSkillUsageEvidence(sessionFiles, options.lookupSkills || skills, {
+      cache: options.cache,
+      progress: options.progress,
+    });
   const byName = new Map(skills.map((skill) => [skill.fullName, skill]));
-  const readSessionEvidence = createSkillUsageEvidenceReader(options.lookupSkills || skills, options.cache);
 
   for (const file of sessionFiles) {
-    const sessionEvidence = await readSessionEvidence(file.path);
+    const sessionEvidence = usageBySession.get(file.path) || [];
 
     for (const evidence of sessionEvidence) {
       const skill = byName.get(evidence.fullName);
@@ -108,6 +112,25 @@ export async function attachSkillUsageEvidence(skills, codexHome, options = {}) 
   }
 
   return skills;
+}
+
+export async function collectSkillUsageEvidence(sessionFiles, lookupSkills, options = {}) {
+  const readSessionEvidence = createSkillUsageEvidenceReader(lookupSkills, options.cache);
+  const usageBySession = new Map();
+  for (let index = 0; index < sessionFiles.length; index += 1) {
+    const file = sessionFiles[index];
+    usageBySession.set(file.path, await readSessionEvidence(file.path));
+    updateSkillsProgress(options, "usage", index + 1, sessionFiles.length);
+  }
+  updateSkillsProgress(options, "usage", sessionFiles.length, sessionFiles.length);
+  return usageBySession;
+}
+
+function updateSkillsProgress(options, stepId, current, total) {
+  options.progress?.updateStep("skills", stepId, current, total, {
+    rowLabel: "Skills",
+    stepLabel: stepId,
+  });
 }
 
 export function createSkillUsageEvidenceReader(skills, cache) {

@@ -11,9 +11,10 @@ import { listSessionFiles } from "./session.js";
 const execFileAsync = promisify(execFile);
 
 export async function planCleanup(codexHome, options = {}) {
-  const staleDays = Number(options.staleDays || 30);
-  const subAgentStaleDays = Number(options.subAgentStaleDays || 7);
-  const minSizeMb = Number(options.minSizeMb || 100);
+  const staleDays = Number(options.staleDays ?? 30);
+  const subAgentStaleDays = Number(options.subAgentStaleDays ?? 7);
+  const archivedStaleDays = Number(options.archivedStaleDays ?? 3);
+  const minSizeMb = Number(options.minSizeMb ?? 0);
   const minSizeBytes = minSizeMb * 1024 * 1024;
   const paths = codexPaths(codexHome);
   const kind = options.kind || "recommended";
@@ -22,21 +23,22 @@ export async function planCleanup(codexHome, options = {}) {
 
   for (const file of sessionFiles) {
     const ageDays = daysSince(file.lastActiveAt || file.mtime);
-    const eligibleByStaleSize = ageDays != null && ageDays >= staleDays && file.sizeBytes >= minSizeBytes;
-    const eligibleArchived = file.archived && file.sizeBytes >= minSizeBytes;
-    const eligibleSubThread = ageDays != null && ageDays >= subAgentStaleDays && file.isSubagent && file.sizeBytes >= minSizeBytes;
+    const eligibleBySize = file.sizeBytes >= minSizeBytes;
+    const eligibleByStaleAge = ageDays != null && ageDays >= staleDays && eligibleBySize;
+    const eligibleArchived = file.archived && ageDays != null && ageDays >= archivedStaleDays && eligibleBySize;
+    const eligibleSubThread = ageDays != null && ageDays >= subAgentStaleDays && file.isSubagent && eligibleBySize;
     if (!matchesCleanupKind({
       file,
       kind,
       eligibleArchived,
       eligibleSubThread,
-      eligibleByStaleSize,
+      eligibleByStaleAge,
     })) {
       continue;
     }
     actions.push({
       action: "quarantine",
-      reason: cleanupReason(file, staleDays),
+      reason: cleanupReason(file, { staleDays, archivedStaleDays }),
       source: file.path,
       target: path.join(paths.rolloutQuarantine, file.relativePath),
       sizeBytes: file.sizeBytes,
@@ -55,6 +57,7 @@ export async function planCleanup(codexHome, options = {}) {
     codexHome,
     staleDays,
     subAgentStaleDays,
+    archivedStaleDays,
     minSizeMb,
     kind,
     actionCount: actions.length,
@@ -142,7 +145,7 @@ export async function applyCleanupPlan(plan) {
   return quarantineFiles(plan);
 }
 
-function matchesCleanupKind({ file, kind, eligibleArchived, eligibleSubThread, eligibleByStaleSize }) {
+function matchesCleanupKind({ file, kind, eligibleArchived, eligibleSubThread, eligibleByStaleAge }) {
   if (kind === "archived") {
     return eligibleArchived;
   }
@@ -150,20 +153,20 @@ function matchesCleanupKind({ file, kind, eligibleArchived, eligibleSubThread, e
     return !file.archived && eligibleSubThread;
   }
   if (kind === "active-older") {
-    return !file.archived && !file.isSubagent && eligibleByStaleSize;
+    return !file.archived && !file.isSubagent && eligibleByStaleAge;
   }
   if (kind === "recommended") {
-    return eligibleArchived || (!file.archived && eligibleSubThread) || (!file.archived && !file.isSubagent && eligibleByStaleSize);
+    return eligibleArchived || (!file.archived && eligibleSubThread) || (!file.archived && !file.isSubagent && eligibleByStaleAge);
   }
   return false;
 }
 
-function cleanupReason(file, staleDays) {
+function cleanupReason(file, { staleDays, archivedStaleDays }) {
   if (file.archived) {
-    return "large archived session log";
+    return `archived session older than ${archivedStaleDays} days`;
   }
   if (file.isSubagent) {
-    return "large sub-thread session log";
+    return "stale sub-thread session log";
   }
   return `active session older than ${staleDays} days`;
 }

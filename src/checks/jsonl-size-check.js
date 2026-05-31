@@ -3,12 +3,23 @@ import { DEFAULT_INDENT, colorText, formatBytes, formatTable, supportsColor } fr
 import { listSessionFiles } from "../lib/session.js";
 
 export async function runJsonlSizeCheck(codexHome, options = {}) {
-  const staleDays = Number(options.staleDays || 30);
-  const subAgentStaleDays = Number(options.subAgentStaleDays || 7);
-  const minSizeMb = Number(options.minSizeMb || 100);
+  const staleDays = Number(options.staleDays ?? 30);
+  const subAgentStaleDays = Number(options.subAgentStaleDays ?? 7);
+  const archivedStaleDays = Number(options.archivedStaleDays ?? 3);
+  const minSizeMb = Number(options.minSizeMb ?? 0);
   const displayLimit = Number(options.limit || 12);
-  const files = await listSessionFiles(codexHome, { includeArchived: true, includeMeta: true, cache: options.cache });
-  const cleanup = await planCleanup(codexHome, { staleDays, subAgentStaleDays, minSizeMb, sessionFiles: files });
+  const files = await listSessionFiles(codexHome, {
+    includeArchived: true,
+    includeMeta: true,
+    cache: options.cache,
+    progress: options.progress,
+    progressRow: "rollouts",
+    progressRowLabel: "Rollouts",
+    scanProgressStep: "metadata",
+    scanProgressStepLabel: "metadata",
+  });
+  options.progress?.finishRow("rollouts");
+  const cleanup = await planCleanup(codexHome, { staleDays, subAgentStaleDays, archivedStaleDays, minSizeMb, sessionFiles: files });
   const totalBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
   const archivedBytes = files.filter((file) => file.archived).reduce((sum, file) => sum + file.sizeBytes, 0);
   const filesByPath = new Map(files.map((file) => [file.path, file]));
@@ -22,6 +33,7 @@ export async function runJsonlSizeCheck(codexHome, options = {}) {
     codexHome,
     staleDays,
     subAgentStaleDays,
+    archivedStaleDays,
     minSizeMb,
     displayLimit,
     totalFiles: files.length,
@@ -37,7 +49,7 @@ export async function runJsonlSizeCheck(codexHome, options = {}) {
 export function printJsonlSizeCheck(report, options = {}) {
   const rows = options.rows || report.largestFiles;
   const candidateLabel = options.candidateLabel ||
-    `large archived, sub-agent older than ${report.subAgentStaleDays}d, or active older than ${report.staleDays}d rollouts`;
+    `archived older than ${report.archivedStaleDays}d, sub-agent older than ${report.subAgentStaleDays}d, or active older than ${report.staleDays}d rollouts`;
   const color = options.style === false ? false : supportsColor();
   const indent = options.indent === false ? "" : options.indent ?? DEFAULT_INDENT;
   const log = (line = "", styles = []) => console.log(line ? `${indent}${colorText(line, styles, color)}` : "");
@@ -74,7 +86,7 @@ export function printJsonlSizeCheck(report, options = {}) {
       log("To choose which rollout files to quarantine, run `codex-assistant cleanup rollouts`.");
     }
   } else {
-    log("No large stale or archived rollout logs matched the current cleanup thresholds.");
+    log("No stale or archived rollout logs matched the current cleanup thresholds.");
   }
 }
 

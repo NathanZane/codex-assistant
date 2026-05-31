@@ -15,7 +15,7 @@
   "scripts": {
     "start": "node ./bin/codex-assistant.js",
     "test": "node --test",
-    "smoke": "node ./bin/codex-assistant.js check --sessions-limit 3 --min-size-mb 100"
+    "smoke": "node ./bin/codex-assistant.js check --sessions-limit 3"
   },
   "keywords": [
     "codex",

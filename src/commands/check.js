@@ -6,6 +6,7 @@ import { AnalysisCache } from "../lib/cache.js";
 import { applyCleanupPlan } from "../lib/cleanup.js";
 import { colorText, formatBytes, formatInteger, printJson, supportsColor } from "../lib/format.js";
 import { codexPaths } from "../lib/paths.js";
+import { createProgressReporter } from "../lib/progress.js";
 import { applySkillDisablePlan, planSkillDisable } from "../lib/skill-config.js";
 
 const ROLLOUT_GUIDANCE_THRESHOLD_BYTES = 2 * 1024 * 1024 * 1024;
@@ -17,16 +18,25 @@ export async function runCheck({ options, positionals = [] }) {
   const only = normalizeCheckTarget(options.only, positionals);
   const cache = new AnalysisCache(options.codexHome, options);
   await cache.load();
+  const progress = createProgressReporter({
+    json: options.json,
+    enabled: shouldShowScanProgress(cache, options) && Boolean(process.stderr.isTTY),
+  });
+  const checkOptions = { ...options, cache, progress };
 
   const checks = [];
-  if (!only || only === "agents") {
-    checks.push(await runAgentsCheck(options.codexHome, { ...options, cache }));
-  }
-  if (!only || only === "skills") {
-    checks.push(await runSkillCheck(options.codexHome, { ...options, cache }));
-  }
-  if (!only || only === "jsonl") {
-    checks.push(await runJsonlSizeCheck(options.codexHome, { ...options, cache }));
+  try {
+    if (!only || only === "agents") {
+      checks.push(await runAgentsCheck(options.codexHome, checkOptions));
+    }
+    if (!only || only === "skills") {
+      checks.push(await runSkillCheck(options.codexHome, checkOptions));
+    }
+    if (!only || only === "jsonl") {
+      checks.push(await runJsonlSizeCheck(options.codexHome, checkOptions));
+    }
+  } finally {
+    progress.finish();
   }
 
   await cache.save();
@@ -51,6 +61,16 @@ export async function runCheck({ options, positionals = [] }) {
   }
 
   await printPrioritizedCheckFlow(checks, options);
+}
+
+function shouldShowScanProgress(cache, options) {
+  if (options.json) {
+    return false;
+  }
+  if (!cache.enabled || cache.refresh || cache.stats.loadError) {
+    return true;
+  }
+  return !cache.loaded || cache.entryCount === 0;
 }
 
 function printCheckSections(checks) {
@@ -130,7 +150,8 @@ function printRolloutGuidanceReport(report, guidance) {
     {
       footer: false,
       candidateLabel:
-        `archived, sub-agent older than ${formatInteger(plan.subAgentStaleDays)}d, or active older than ${formatInteger(plan.staleDays)}d rollout files`,
+        `archived older than ${formatInteger(plan.archivedStaleDays)}d, ` +
+        `sub-agent older than ${formatInteger(plan.subAgentStaleDays)}d, or active older than ${formatInteger(plan.staleDays)}d rollout files`,
       compact: true,
       tableTitle: false,
       style: true,
@@ -169,6 +190,7 @@ function buildRolloutGuidance(report, codexHome) {
       codexHome,
       staleDays: report.staleDays,
       subAgentStaleDays: report.subAgentStaleDays,
+      archivedStaleDays: report.archivedStaleDays,
       minSizeMb: report.minSizeMb,
       kind: "archived-active-older",
       actionCount: actions.length,
@@ -217,10 +239,8 @@ async function handleRolloutGuidance(item, interactive) {
   }
 
   log(message, ["yellow"]);
-  log(
-    `Quarantined files are moved to ${plan.quarantineRoot}. ` +
-      "To trash afterward, run `codex-assistant cleanup rollouts`.",
-  );
+  log(`Quarantined files are moved to ${plan.quarantineRoot}.`);
+  log("For more control over which files to quarantine, or to trash/restore quarantined files afterward, run `codex-assistant cleanup rollouts`.");
   if (!(await confirm(`${ROLLOUT_INDENT}${colorText("Continue? [y/N]: ", ["bold", "yellow"], color)}`))) {
     return false;
   }
@@ -243,7 +263,7 @@ function rolloutWord(count) {
 function rolloutMatchSummary(item, plan) {
   const parts = [];
   if (item.archivedCount) {
-    parts.push(`${formatInteger(item.archivedCount)} archived ${rolloutWord(item.archivedCount)}`);
+    parts.push(`${formatInteger(item.archivedCount)} archived ${rolloutWord(item.archivedCount)} older than ${formatInteger(plan.archivedStaleDays)}d`);
   }
   if (item.subAgentCount) {
     parts.push(`${formatInteger(item.subAgentCount)} sub-agent ${rolloutWord(item.subAgentCount)} older than ${formatInteger(plan.subAgentStaleDays)}d`);

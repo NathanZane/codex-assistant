@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import readline from "node:readline";
-import { attachSkillUsageEvidence, createSkillUsageEvidenceReader, scanSkillRegistry, summarizeSkillRegistry } from "../lib/skills.js";
+import { attachSkillUsageEvidence, collectSkillUsageEvidence, createSkillUsageEvidenceReader, scanSkillRegistry, summarizeSkillRegistry } from "../lib/skills.js";
 import { listSessionFiles, sortRecentSessions } from "../lib/session.js";
 import { formatInteger, measure, printIndentedLine, printSectionTitle, printTable } from "../lib/format.js";
 import { readSkillConfigState } from "../lib/skill-config.js";
@@ -8,7 +8,14 @@ import { readSkillConfigState } from "../lib/skill-config.js";
 export async function runSkillCheck(codexHome, options = {}) {
   const days = options.allTime || options.days === "all" ? null : Number(options.days || 30);
   const threadFilter = options.thread ? String(options.thread).toLowerCase() : null;
-  const allSessions = await listSessionFiles(codexHome, { includeArchived: true });
+  const allSessions = await listSessionFiles(codexHome, {
+    includeArchived: true,
+    progress: options.progress,
+    progressRow: "skills",
+    progressRowLabel: "Skills",
+    scanProgressStep: "metadata",
+    scanProgressStepLabel: "metadata",
+  });
   let scopedSessions = allSessions.filter((file) => {
     if (days != null && (file.ageDays == null || file.ageDays > days)) {
       return false;
@@ -31,12 +38,23 @@ export async function runSkillCheck(codexHome, options = {}) {
   const resolvedSkills = activeRegistry.entries.length ? resolveActiveSkills(allSkills, activeRegistry.entries) : dedupeSkills(allSkills);
   const disabledSkills = resolvedSkills.filter((skill) => skillConfig.disabled.has(skill.fullName));
   const skills = resolvedSkills.filter((skill) => !skillConfig.disabled.has(skill.fullName));
+  const usageBySession = skills.length
+    ? await collectSkillUsageEvidence(scopedSessions, allSkills, {
+      cache: options.cache,
+      progress: options.progress,
+    })
+    : new Map();
   await attachSkillUsageEvidence(skills, codexHome, {
     sessionFiles: scopedSessions,
     cache: options.cache,
     lookupSkills: allSkills,
+    usageBySession,
   });
-  const ingestionStats = await collectSkillIngestionStats(scopedSessions, options.cache, skills, allSkills);
+  const ingestionStats = await collectSkillIngestionStats(scopedSessions, options.cache, skills, allSkills, {
+    progress: options.progress,
+    usageBySession,
+  });
+  options.progress?.finishRow("skills");
   const summary = summarizeSkillRegistry(skills);
   const unused = skills.filter((skill) => skill.usage.evidence === 0).sort((a, b) => (b.registryTokens || 0) - (a.registryTokens || 0));
   const used = skills.filter((skill) => skill.usage.evidence > 0);
@@ -158,13 +176,16 @@ async function readActiveSkillRegistry(sessionFiles, cache) {
   return cache ? cache.getOrCompute("active-skill-registry", latest.path, compute, { reuseIfGrowing: true }) : compute();
 }
 
-async function collectSkillIngestionStats(sessionFiles, cache, skills, lookupSkills = skills) {
+async function collectSkillIngestionStats(sessionFiles, cache, skills, lookupSkills = skills, options = {}) {
   const stats = new Map();
   const includedSkills = new Set(skills.map((skill) => skill.fullName));
-  const readUsageEvidence = createSkillUsageEvidenceReader(lookupSkills, cache);
-  for (const file of sessionFiles) {
+  const readUsageEvidence = options.usageBySession ? null : createSkillUsageEvidenceReader(lookupSkills, cache);
+  for (let index = 0; index < sessionFiles.length; index += 1) {
+    const file = sessionFiles[index];
     const registry = await readSessionSkillRegistry(file.path, cache);
-    const usageEvidence = await readUsageEvidence(file.path);
+    const usageEvidence = options.usageBySession
+      ? options.usageBySession.get(file.path) || []
+      : await readUsageEvidence(file.path);
     const usedInSession = new Set(usageEvidence.map((evidence) => evidence.fullName));
     for (const entry of registry.entries) {
       if (!includedSkills.has(entry.skill)) {
@@ -180,8 +201,17 @@ async function collectSkillIngestionStats(sessionFiles, cache, skills, lookupSki
       }
       stats.set(entry.skill, current);
     }
+    updateSkillsProgress(options, "injections", index + 1, sessionFiles.length);
   }
+  updateSkillsProgress(options, "injections", sessionFiles.length, sessionFiles.length);
   return stats;
+}
+
+function updateSkillsProgress(options, stepId, current, total) {
+  options.progress?.updateStep("skills", stepId, current, total, {
+    rowLabel: "Skills",
+    stepLabel: stepId,
+  });
 }
 
 async function readSessionSkillRegistry(sessionPath, cache) {
