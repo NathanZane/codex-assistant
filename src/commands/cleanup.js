@@ -4,6 +4,7 @@ import readline from "node:readline/promises";
 import { planCleanup, planQuarantinedCleanup, planQuarantineRestore, applyCleanupPlan } from "../lib/cleanup.js";
 import { colorText, formatBytes, printIndentedLine, printJson, printSectionTitle, printTable, shortPath, supportsColor } from "../lib/format.js";
 import { codexPaths } from "../lib/paths.js";
+import { createProgressReporter } from "../lib/progress.js";
 import { listSessionFiles } from "../lib/session.js";
 import { runSkillCleanup } from "./skills.js";
 
@@ -119,8 +120,20 @@ export async function runRolloutCleanup({ options }) {
     return;
   }
 
-  const result = await applyCleanupPlan(report);
-  console.log("");
+  const progress = createProgressReporter({
+    title: "Applying",
+    json: options.json,
+    enabled: Boolean(process.stderr.isTTY) && !options.json,
+  });
+  let result;
+  try {
+    result = await applyCleanupPlan(report, { progress });
+  } finally {
+    progress.finish();
+  }
+  if (!progress.enabled) {
+    console.log("");
+  }
   if (result.mode === "trash") {
     printIndentedLine(`Moved ${result.actionCount} quarantined files (${formatBytes(result.bytesMoved)}) to system trash.`, { styles: ["green"] });
   } else if (result.mode === "restore") {

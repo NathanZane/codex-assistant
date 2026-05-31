@@ -40,3 +40,21 @@ test("progress reporter stays silent for json output", () => {
 
   assert.deepEqual(writes, []);
 });
+
+test("progress reporter supports custom section titles", () => {
+  const writes = [];
+  const stream = {
+    isTTY: true,
+    write(value) {
+      writes.push(value);
+    },
+  };
+  const progress = createProgressReporter({ stream, title: "Applying", minIntervalMs: 0, style: false });
+
+  progress.updateStep("rollout-apply", "trash", 0, 2, { rowLabel: "Rollouts", stepLabel: "trash" });
+  progress.finish();
+
+  const output = writes.join("");
+  assert.match(output, /^Applying\n/);
+  assert.match(output, /\r  Rollouts: trash 0\/2/);
+});
