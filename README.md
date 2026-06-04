@@ -110,8 +110,8 @@ codex-assistant uninstall --rollouts restore --delete-cache --delete-backups --a
   `quarantine/rollouts/archived_sessions/...`.
 - By default, rollout cleanup targets archived rollouts older than 3 days,
   sub-agent rollouts older than 7 days, and active top-level rollouts older
-  than 30 days. There is no default size threshold; use `--min-size-mb` if you
-  want one.
+  than 30 days. The sub-agent bucket includes Codex helper sub-agent sessions.
+  There is no default size threshold; use `--min-size-mb` if you want one.
 - Running `cleanup rollouts` again shows quarantined files as a trash option
   when present; applying that option sends them to system trash where the OS
   supports it.

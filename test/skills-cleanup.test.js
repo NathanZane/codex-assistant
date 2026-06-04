@@ -191,6 +191,40 @@ test("planCleanup treats stale sub-thread rollouts as cleanup candidates", async
   assert.equal(plan.actions[0].parentThreadId, parentThreadId);
 });
 
+test("planCleanup treats guardian sub-agent rollouts as sub-agent cleanup candidates", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-assistant-guardian-subagent-"));
+  const codexHome = path.join(root, ".codex");
+  const sessionDir = path.join(codexHome, "sessions", "2026", "01", "01");
+  await fs.mkdir(sessionDir, { recursive: true });
+
+  const sessionId = "019d2bdc-7777-7000-9000-000000000001";
+  const sessionPath = path.join(sessionDir, `rollout-2026-01-01T00-00-00-${sessionId}.jsonl`);
+  const meta = {
+    type: "session_meta",
+    payload: {
+      id: sessionId,
+      cwd: path.join(root, "project"),
+      source: { subagent: { other: "guardian" } },
+      thread_source: "subagent",
+    },
+  };
+  await fs.writeFile(
+    sessionPath,
+    `${JSON.stringify(meta)}\n${"x".repeat(2 * 1024 * 1024)}\n`,
+  );
+  const oldDate = new Date(Date.now() - 60 * 86_400_000);
+  await fs.utimes(sessionPath, oldDate, oldDate);
+
+  const subAgentPlan = await planCleanup(codexHome, { kind: "sub-agents" });
+  const activePlan = await planCleanup(codexHome, { staleDays: 30, kind: "active-older" });
+
+  assert.equal(subAgentPlan.actionCount, 1);
+  assert.equal(subAgentPlan.actions[0].reason, "stale sub-thread session log");
+  assert.equal(subAgentPlan.actions[0].isSubagent, true);
+  assert.equal(subAgentPlan.actions[0].parentThreadId, null);
+  assert.equal(activePlan.actionCount, 0);
+});
+
 test("recommended rollout cleanup uses archived, sub-agent, and active age rules", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "codex-assistant-rollout-rules-"));
   const codexHome = path.join(root, ".codex");

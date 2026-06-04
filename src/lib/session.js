@@ -124,14 +124,16 @@ export async function readSessionMeta(filePath) {
       if (record?.type !== "session_meta" || !record.payload || typeof record.payload !== "object") {
         continue;
       }
-      const subagentSpawn = record.payload.source?.subagent?.thread_spawn;
+      const sourceSubagent = record.payload.source?.subagent;
+      const subagentSpawn = sourceSubagent?.thread_spawn;
+      const isSubagent = Boolean(sourceSubagent) || record.payload.thread_source === "subagent";
       return {
         id: record.payload.id || null,
         forkedFromId: record.payload.forked_from_id || null,
         cwd: record.payload.cwd || null,
         model: record.payload.model || null,
         source: record.payload.source || null,
-        isSubagent: Boolean(subagentSpawn),
+        isSubagent,
         parentThreadId: subagentSpawn?.parent_thread_id || null,
         subagentDepth: Number.isFinite(subagentSpawn?.depth) ? subagentSpawn.depth : null,
         agentNickname: record.payload.agent_nickname || subagentSpawn?.agent_nickname || null,
@@ -150,7 +152,7 @@ async function readSessionMetaCached(filePath, cache) {
   if (!cache) {
     return readSessionMeta(filePath);
   }
-  const cached = await cache.getOrCompute("session-meta-v1", filePath, () => readSessionMeta(filePath), { reuseIfGrowing: true });
+  const cached = await cache.getOrCompute("session-meta-v2", filePath, () => readSessionMeta(filePath), { reuseIfGrowing: true });
   return cached && typeof cached === "object" ? cached : {};
 }
 
